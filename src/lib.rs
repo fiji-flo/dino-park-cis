@@ -8,8 +8,8 @@ extern crate failure_derive;
 
 pub mod api;
 pub mod db;
-pub mod healthz;
-pub mod profile;
 pub mod error;
-pub mod settings;
+pub mod healthz;
 pub mod keys;
+pub mod profile;
+pub mod settings;

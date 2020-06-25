@@ -3,7 +3,6 @@ use crate::profile::publishers::IdentityRules;
 use crate::profile::publishers::PUBLISHER_RULES;
 use cis_profile::schema::Profile;
 use cis_profile::schema::StandardAttributeString;
-use failure::Error;
 
 fn update_sas(
     field: &mut StandardAttributeString,
@@ -16,25 +15,25 @@ fn update_sas(
 }
 
 macro_rules! update_allowed_sas {
-    ($p:expr, $r:ident, $u:expr, $s:ident) => {{
-        if $u.value.is_some() {
-            if $p.value.is_none() {
-                if !update_allowed!($p, $s.create.$r) {
+    ($p:ident, $f:ident, $u:ident, $s:ident) => {
+        if $u.$f.value.is_some() {
+            if $p.$f.value.is_none() {
+                if !update_allowed!($p.$f, $s.create.$f) {
                     Err(ProfileError::PublisherNotAllowedToCreate)
                 } else {
-                    update_sas(&mut $p, $u)
+                    update_sas(&mut $p.$f, $u.$f)
                 }
             } else {
-                if !update_allowed!($p, $s.update.$r) {
+                if !update_allowed!($p.$f, $s.update.$f) {
                     Err(ProfileError::PublisherNotAllowedToUpdate)
                 } else {
-                    update_sas(&mut $p, $u)
+                    update_sas(&mut $p.$f, $u.$f)
                 }
             }
         } else {
             Ok(())
         }
-    }};
+    };
 }
 
 macro_rules! update_allowed {
@@ -53,12 +52,7 @@ macro_rules! update_allowed_identity {
 
 pub async fn update(mut p: Profile, u: Profile) -> Result<Profile, ProfileError> {
     let rules = PUBLISHER_RULES.get().await.unwrap().rules;
-    update_allowed_sas!(
-        p.primary_username,
-        primary_username,
-        u.primary_username,
-        rules
-    );
+    update_allowed_sas!(p, primary_username, u, rules)?;
     Ok(p)
 }
 
@@ -83,8 +77,8 @@ mod test {
             rules.update.identities,
             github_id_v4
         ));
-        update_allowed_sas!(p.pronouns, pronouns, u.pronouns, rules);
-        assert!(update_allowed_sas!(p.user_id, user_id, u.user_id, rules).is_err());
+        assert!(update_allowed_sas!(p, pronouns, u, rules).is_ok());
+        assert!(update_allowed_sas!(p, user_id, u, rules).is_err());
         assert!(!update_allowed!(p.uuid, rules.update.uuid));
         Ok(())
     }

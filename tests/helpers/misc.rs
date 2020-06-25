@@ -117,9 +117,7 @@ pub async fn test_app() -> impl HttpServiceFactory {
         .service(healthz::healthz_app())
         .service(
             web::scope("/cis/api")
-                .wrap_fn(|req, srv| {
-                    srv.call(req)
-                })
-                .service(api::change::change_app())
+                .wrap_fn(|req, srv| srv.call(req))
+                .service(api::change::change_app()),
         )
 }

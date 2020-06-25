@@ -2,7 +2,7 @@ use actix_web::dev::HttpServiceFactory;
 use actix_web::web;
 use actix_web::HttpResponse;
 
-const VERSION: &str =  env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn change_user() -> HttpResponse {
     HttpResponse::Ok().finish()

@@ -4,7 +4,7 @@ use serde::Deserialize;
 pub enum DisplayFilter {
     True,
     False,
-    Any
+    Any,
 }
 
 impl DisplayFilter {

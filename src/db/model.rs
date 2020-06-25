@@ -1,6 +1,6 @@
-use crate::error::DBError;
 use crate::db::schema::*;
 use crate::db::types::*;
+use crate::error::DBError;
 use cis_profile::schema::Profile;
 use failure::Error;
 use serde::Serialize;

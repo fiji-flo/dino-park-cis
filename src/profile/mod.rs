@@ -1,4 +1,4 @@
-pub mod display;
-pub mod update;
 pub mod change;
+pub mod display;
 pub mod publishers;
+pub mod update;

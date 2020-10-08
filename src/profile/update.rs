@@ -2,9 +2,12 @@ use crate::error::ProfileError;
 use crate::profile::publishers::PUBLISHER_RULES;
 use cis_profile::schema::AccessInformationProviderSubObject;
 use cis_profile::schema::Profile;
+use cis_profile::schema::PublisherAuthority;
 use cis_profile::schema::StandardAttributeBoolean;
 use cis_profile::schema::StandardAttributeString;
 use cis_profile::schema::StandardAttributeValues;
+
+const ALLOWED_UPDATORS: [PublisherAuthority; 1] = [PublisherAuthority::Mozilliansorg];
 
 pub enum Operation {
     Create,
@@ -14,9 +17,10 @@ pub enum Operation {
 
 macro_rules! update {
     ($pf:ident, $uf:ident, $v:ident) => {{
-        if $pf.metadata.last_modified >= $uf.metadata.last_modified {
+        if $pf.metadata.last_modified > $uf.metadata.last_modified {
             return Err(ProfileError::OutdatedUpdate);
         }
+        *$pf = $uf;
         Ok(())
     }};
 }
@@ -50,17 +54,25 @@ fn update_saac(
 
 macro_rules! update_allowed_any {
     ($($f:ident).*, $p:ident, $u:ident, $s:ident, $v:ident, $c:ident) => {{
-        let op = if $p.$($f).* == $u.$($f).* || $u.$($f).*.$v.is_none() {
+        let op = if $p.$($f).* == $u.$($f).* ||
+            !($u.$($f).*.$v.is_some() && ($p.$($f).*.$v != $u.$($f).*.$v ||
+                $p.$($f).*.metadata.display != $u.$($f).*.metadata.display ||
+                $p.$($f).*.metadata.verified != $u.$($f).*.metadata.verified))
+        {
             Ok(Operation::Noop)
         } else {
             if $p.$($f).*.$v.is_none() {
-                if !update_allowed!($p.$($f).*, $s.create.$($f).*) {
+                if !update_allowed!($u.$($f).*, $s.create.$($f).*) {
                     Err(ProfileError::PublisherNotAllowedToCreate)
                 } else {
                     Ok(Operation::Create)
                 }
             } else {
-                if !update_allowed!($p.$($f).*, $s.update.$($f).*) {
+                if !update_allowed!($u.$($f).*, $s.update.$($f).*) && !(
+                    $p.$($f).*.$v == $u.$($f).*.$v &&
+                    $p.$($f).*.metadata.display != $u.$($f).*.metadata.display &&
+                    ALLOWED_UPDATORS.contains(&$u.$($f).*.signature.publisher.name)
+                ) {
                     Err(ProfileError::PublisherNotAllowedToUpdate)
                 } else {
                     Ok(Operation::Update)
@@ -172,6 +184,7 @@ mod test {
     use super::*;
     use crate::profile::publishers::PublisherRules;
     use chrono::Utc;
+    use cis_profile::schema::Display;
     use failure::Error;
 
     #[tokio::test]
@@ -198,14 +211,59 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_update() -> Result<(), Error> {
+    async fn test_create() -> Result<(), Error> {
         let p = Profile::default();
         let mut u = Profile::default();
         u.pronouns.value = Some(String::from("dino"));
         u.pronouns.metadata.last_modified = Utc::now();
         u.identities.github_id_v3.value = Some(String::from("dino"));
         u.identities.github_id_v3.metadata.last_modified = Utc::now();
+        let p = update(p, u).await?;
+        assert_eq!(p.pronouns.value, Some(String::from("dino")));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_updators() -> Result<(), Error> {
+        let mut o = Profile::default();
+        o.primary_email.value = Some(String::from("dino@dino.dino"));
+        o.primary_email.metadata.last_modified = Utc::now();
+        o.primary_email.metadata.display = Some(Display::Staff);
+        o.primary_email.signature.publisher.name = PublisherAuthority::Ldap;
+        let p = o.clone();
+        let u = o.clone();
+        assert!(update(p, u).await.is_ok());
+        let p = o.clone();
+        let mut u = o.clone();
+        u.primary_email.metadata.display = Some(Display::Public);
+        u.primary_email.signature.publisher.name = PublisherAuthority::Ldap;
+        assert!(update(p, u).await.is_err());
+        let p = o.clone();
+        let mut u = o.clone();
+        u.primary_email.metadata.display = Some(Display::Public);
+        u.primary_email.signature.publisher.name = PublisherAuthority::Mozilliansorg;
         update(p, u).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update() -> Result<(), Error> {
+        let mut o = Profile::default();
+        o.primary_email.value = Some(String::from("dino@dino.dino"));
+        o.primary_email.metadata.last_modified = Utc::now();
+        o.primary_email.metadata.display = Some(Display::Staff);
+        o.primary_email.signature.publisher.name = PublisherAuthority::Ldap;
+        let p = o.clone();
+        let u = o.clone();
+        let p = update(p, u.clone()).await?;
+        assert_eq!(p, u);
+        let p = o.clone();
+        let mut u = o.clone();
+        o.primary_email.metadata.last_modified = Utc::now();
+        u.primary_email.value = Some(String::from("mc@dino.dino"));
+        u.primary_email.signature.publisher.name = PublisherAuthority::AccessProvider;
+        let p = update(p, u).await?;
+        assert_eq!(p.primary_email.value, Some(String::from("mc@dino.dino")));
         Ok(())
     }
 }
